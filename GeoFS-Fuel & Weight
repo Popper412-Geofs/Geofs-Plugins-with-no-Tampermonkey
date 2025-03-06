@@ -1,0 +1,128 @@
+
+// ==UserScript==
+// @name         GeoFS Weight and Fuel Manager with Toggle and Engine Check
+// @namespace    http://tampermonkey.net/
+// @version      1.2
+// @description  Add fuel, passenger, and freight weight to aircraft in GeoFS. Toggle display with "L" key. Drain fuel only when engine is on and stop engines if fuel is empty.
+// @author       Your Name
+// @match        https://www.geo-fs.com/*
+// @grant        none
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    // Wait for GeoFS to load
+    const waitForGeoFS = setInterval(() => {
+        if (window.geofs && geofs.aircraft && geofs.aircraft.instance) {
+            clearInterval(waitForGeoFS);
+            initWeightFuelManager();
+        }
+    }, 1000);
+
+    function initWeightFuelManager() {
+        console.log("GeoFS Weight and Fuel Manager with Toggle and Engine Check loaded!");
+
+        // Initialize variables
+        let fuelWeight = 1000; // Default fuel weight in kg
+        let passengerWeight = 0; // Default passenger weight in kg
+        let freightWeight = 0; // Default freight weight in kg
+        let totalFuelCapacity = 5000; // Example total fuel capacity in kg
+        let fuelBurnRate = 200; // Example fuel burn rate in kg/hour
+        let fuelBurned = 0; // Tracks fuel burned
+        let lastUpdateTime = Date.now(); // Last time fuel burn was updated
+
+        // Create the UI (hidden by default)
+        const uiContainer = document.createElement('div');
+        uiContainer.style.position = 'absolute';
+        uiContainer.style.top = '10px';
+        uiContainer.style.right = '10px';
+        uiContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        uiContainer.style.color = 'white';
+        uiContainer.style.padding = '10px';
+        uiContainer.style.zIndex = '1000';
+        uiContainer.style.borderRadius = '5px';
+        uiContainer.style.fontFamily = 'Arial, sans-serif';
+        uiContainer.style.display = 'none'; // Hidden by default
+        uiContainer.innerHTML = `
+            <h3>GeoFS Weight and Fuel Manager</h3>
+            <label>Fuel Weight (kg):</label>
+            <input type="number" id="fuelWeight" value="${fuelWeight}" style="width: 80px;">
+            <button id="setFuelWeight">Set Fuel</button>
+            <br><br>
+            <label>Passenger Weight (kg):</label>
+            <input type="number" id="passengerWeight" value="${passengerWeight}" style="width: 80px;">
+            <button id="setPassengerWeight">Set Passenger</button>
+            <br><br>
+            <label>Freight Weight (kg):</label>
+            <input type="number" id="freightWeight" value="${freightWeight}" style="width: 80px;">
+            <button id="setFreightWeight">Set Freight</button>
+            <br><br>
+            <p><strong>Total Weight Onboard:</strong> <span id="totalWeight">0</span> kg</p>
+            <p><strong>Total Fuel Onboard:</strong> <span id="fuelOnboard">0</span> kg</p>
+            <p><strong>Fuel Burned:</strong> <span id="fuelBurned">0</span> kg</p>
+            <p><strong>Fuel Remaining:</strong> <span id="fuelRemaining">0</span> kg</p>
+        `;
+
+        document.body.appendChild(uiContainer);
+
+        // Toggle visibility of the UI when "L" is pressed
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'l' || event.key === 'L') {
+                uiContainer.style.display = uiContainer.style.display === 'none' ? 'block' : 'none';
+            }
+        });
+
+        // Update weights and display values
+        function updateWeights() {
+            const baseWeight = geofs.aircraft.instance.emptyMass || 50000; // Default empty weight of the aircraft in kg
+            const totalWeight = baseWeight + fuelWeight + passengerWeight + freightWeight;
+            const fuelRemaining = Math.max(fuelWeight - fuelBurned, 0);
+
+            // Update UI elements
+            document.getElementById("totalWeight").textContent = totalWeight.toFixed(2);
+            document.getElementById("fuelOnboard").textContent = fuelWeight.toFixed(2);
+            document.getElementById("fuelBurned").textContent = fuelBurned.toFixed(2);
+            document.getElementById("fuelRemaining").textContent = fuelRemaining.toFixed(2);
+
+            // Stop engines if fuel is depleted
+            if (fuelRemaining <= 0 && geofs.aircraft.instance.engine.on) {
+                geofs.aircraft.instance.engine.on = false;
+                console.log("Engines stopped due to lack of fuel!");
+            }
+        }
+
+        // Burn fuel only if engine is on
+        function burnFuel() {
+            const now = Date.now();
+            const elapsedTime = (now - lastUpdateTime) / 3600000; // Time in hours
+            lastUpdateTime = now;
+
+            if (geofs.aircraft.instance.engine.on) {
+                fuelBurned += fuelBurnRate * elapsedTime; // Burn fuel based on elapsed time only if engine is on
+            }
+
+            updateWeights();
+        }
+
+        // Set up event listeners for buttons
+        document.getElementById("setFuelWeight").addEventListener("click", () => {
+            fuelWeight = parseFloat(document.getElementById("fuelWeight").value);
+            fuelBurned = 0; // Reset fuel burned
+            updateWeights();
+        });
+
+        document.getElementById("setPassengerWeight").addEventListener("click", () => {
+            passengerWeight = parseFloat(document.getElementById("passengerWeight").value);
+            updateWeights();
+        });
+
+        document.getElementById("setFreightWeight").addEventListener("click", () => {
+            freightWeight = parseFloat(document.getElementById("freightWeight").value);
+            updateWeights();
+        });
+
+        // Periodically burn fuel and update weights
+        setInterval(burnFuel, 1000);
+    }
+})();
